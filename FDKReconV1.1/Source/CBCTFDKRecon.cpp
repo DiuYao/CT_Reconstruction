@@ -63,9 +63,9 @@ void CBCTFDKRecon::recon()
 
 	std::cout << "处理重建图像..." << std::endl;
 	// 负值置0
-	//negativeValueToZero();
+	negativeValueToZero();
 	// 负值置0，并归一化
-	normalizeDataOptimize();
+	//normalizeDataOptimize();
 	cout << "处理重建图像结束" << endl;
 
 	saveAsImage();

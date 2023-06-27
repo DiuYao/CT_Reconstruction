@@ -572,9 +572,14 @@ __global__ void reconstructeImage(float angle, cudaTextureObject_t texProj, Imag
 		//imgRec[z * width * height + y * width + x] = v / pSizeY;
 
 		//// Read from texture and write to global memory
-		d_mReconInfoData.imageRecon[z * mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY + y * mImagingSystemInfo.pNumX + x] += (mImagingSystemInfo.sod * mImagingSystemInfo.sod) / ((mImagingSystemInfo.sod + tImgX) * (mImagingSystemInfo.sod + tImgX)) * tex2D<float>(texProj, correctedU, correctedV) * mImagingSystemInfo.thetaStep;// / mImagingSystemInfo.imgReconLenX; // (mImagingSystemInfo.pNumX * mImagingSystemInfo.pSizeX);
-		//d_mReconInfoData.imageRecon[z * mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY + y * mImagingSystemInfo.pNumX + x] += 1 / 2.0f * (mImagingSystemInfo.sod * mImagingSystemInfo.sod) / ((mImagingSystemInfo.sod + tImgX) * (mImagingSystemInfo.sod + tImgX)) * tex2D<float>(texProj, correctedU + 0.5, correctedV + 0.5) * mImagingSystemInfo.thetaStep;// / mImagingSystemInfo.imgReconLenX; // (mImagingSystemInfo.pNumX * mImagingSystemInfo.pSizeX);
+		//d_mReconInfoData.imageRecon[z * mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY + y * mImagingSystemInfo.pNumX + x] += (mImagingSystemInfo.sod * mImagingSystemInfo.sod) / ((mImagingSystemInfo.sod + tImgX) * (mImagingSystemInfo.sod + tImgX)) * tex2D<float>(texProj, correctedU, correctedV) * mImagingSystemInfo.thetaStep;// / mImagingSystemInfo.imgReconLenX; // (mImagingSystemInfo.pNumX * mImagingSystemInfo.pSizeX);
 		
+		// 矫正后
+		//d_mReconInfoData.imageRecon[z * mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY + y * mImagingSystemInfo.pNumX + x] += 0.189534f / 0.181f * 1 / 2.0f * (mImagingSystemInfo.sod * mImagingSystemInfo.sod) / ((mImagingSystemInfo.sod + tImgX) * (mImagingSystemInfo.sod + tImgX)) * tex2D<float>(texProj, correctedU + 0.5, correctedV + 0.5) * mImagingSystemInfo.thetaStep;// / mImagingSystemInfo.imgReconLenX; // (mImagingSystemInfo.pNumX * mImagingSystemInfo.pSizeX);
+		
+		// 《医学断层图像重建仿真实验_黄力宇 朱守平 匡涛》中公式 后面乘的角度间隔是分析加的
+		d_mReconInfoData.imageRecon[z * mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY + y * mImagingSystemInfo.pNumX + x] += 1 / 2.0f * (mImagingSystemInfo.sod * mImagingSystemInfo.sod) / ((mImagingSystemInfo.sod + tImgX) * (mImagingSystemInfo.sod + tImgX)) * tex2D<float>(texProj, correctedU + 0.5, correctedV + 0.5) * mImagingSystemInfo.thetaStep;// / mImagingSystemInfo.imgReconLenX; // (mImagingSystemInfo.pNumX * mImagingSystemInfo.pSizeX);
+
 																																																																																					   // 考虑纹理插值时，是否需要加0.5   ????		
 		/*imgRec[z * width * height + y * width + x] += ((sod * sdd) / pow((sod + imgX[x] * sinf(angle) - imgY[y] * cosf(angle)), 2))
 			* tex3D<float>(texProj, u, v, num + 0.5) / width;*/
