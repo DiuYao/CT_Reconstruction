@@ -40,6 +40,7 @@ struct ImagingSystemInfo
 	size_t sod, sdd;
 	size_t views;
 	size_t dNumU, dNumV;
+	size_t dNumUPaddingZero;
 
 	float dSize;    // Ì½²âÆ÷·Ö±æÂÊ
 

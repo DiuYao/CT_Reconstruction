@@ -13,13 +13,15 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 	filterFT(mImagingSystemInfo, h_mReconInfoData, d_mReconInfoData);
 
 #if 0
-	cudaStatus = cudaMemcpy(h_mReconInfoData.filter, d_mReconInfoData.filter, mImagingSystemInfo.dNumU * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+	//cudaStatus = cudaMemcpy(h_mReconInfoData.filter, d_mReconInfoData.filter, mImagingSystemInfo.dNumU * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+	cudaStatus = cudaMemcpy(h_mReconInfoData.filter, d_mReconInfoData.filter, mImagingSystemInfo.dNumUPaddingZero * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "Variable h_mReconInfoData.filter cudaMemcpy failed! %s.\n", cudaGetErrorString(cudaStatus));
 		exit(0);
 	}
 
-	for (int i = 0; i < mImagingSystemInfo.dNumU; i++)
+	//for (int i = 0; i < mImagingSystemInfo.dNumU; i++)
+	for (int i = 0; i < mImagingSystemInfo.dNumUPaddingZero; i++)
 	{
 		std::cout << h_mReconInfoData.filter[i].x << " " << std::endl;
 	}
@@ -47,16 +49,27 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 	dim3 blockSizeWProj(BLOCKSIZEX, BLOCKSIZEY);
 	dim3 gridSizeWProj((mImagingSystemInfo.dNumU - 1) / blockSizeWProj.x + 1, (mImagingSystemInfo.dNumV - 1) / blockSizeWProj.y + 1);
 
+	// 频域滤波用
+	dim3 blockSizeFProj(BLOCKSIZEX, BLOCKSIZEY);
+	dim3 gridSizeFProj((mImagingSystemInfo.dNumUPaddingZero - 1) / blockSizeWProj.x + 1, (mImagingSystemInfo.dNumV - 1) / blockSizeWProj.y + 1);
+
+
 	// 创建投影数据FFT cufftPlan1d
 	cufftHandle planProj;                           // Create cuda library function handle
-	cufftPlan1d(&planProj, mImagingSystemInfo.dNumU, CUFFT_C2C, mImagingSystemInfo.dNumV);    // Plan declaration
+	//cufftPlan1d(&planProj, mImagingSystemInfo.dNumU, CUFFT_C2C, mImagingSystemInfo.dNumV);    // Plan declaration
+	cufftPlan1d(&planProj, mImagingSystemInfo.dNumUPaddingZero, CUFFT_C2C, mImagingSystemInfo.dNumV);    // Plan declaration
 
-	// 创建重建所需的2D纹理—投影数据
+	// 创建重建所需的2D纹理——投影数据
 	cudaArray_t cuArray;
 	cudaTextureObject_t texObj = 0;
 	createTexture2D(texObj, cuArray, d_mReconInfoData.filterProj, mImagingSystemInfo.dNumU, mImagingSystemInfo.dNumV);
 
+	// 临时存储一个角度所需变量
+	h_mReconInfoData.proj = new float[mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV]();
 
+#if _DEBUG
+	h_mReconInfoData.weightProj = new cufftComplex[mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV]();
+#endif
 	// ----------------------------逐角度重建
 	std::cout << "重建开始 ..." << std::endl;
 	float angle = 0.0f;
@@ -78,13 +91,22 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 		//std::cout << "第 " << i + 1 << " 个角度" << "==>>" << std::endl;
 
 		// 提取一个角度的投影
-		for (size_t j = 0; j < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV; j++)
+		/*for (size_t j = 0; j < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV; j++)
 		{
 			h_mReconInfoData.proj[j] = h_mReconInfoData.totalProj[j + i * mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV];
+		}*/
+
+		for (size_t j = 0; j < mImagingSystemInfo.dNumV; j++)
+		{
+			for (size_t k = 0; k < mImagingSystemInfo.dNumU; k++)
+			{
+				h_mReconInfoData.proj[j * mImagingSystemInfo.dNumUPaddingZero + k]
+					= h_mReconInfoData.totalProj[i * mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV + j * mImagingSystemInfo.dNumU + k];
+			}
 		}
 
-
-		cudaStatus = cudaMemcpy(d_mReconInfoData.proj, h_mReconInfoData.proj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(float), cudaMemcpyHostToDevice);
+		//cudaStatus = cudaMemcpy(d_mReconInfoData.proj, h_mReconInfoData.proj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(float), cudaMemcpyHostToDevice);
+		cudaStatus = cudaMemcpy(d_mReconInfoData.proj, h_mReconInfoData.proj, mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV * sizeof(float), cudaMemcpyHostToDevice);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "Variable d_mReconInfoData.proj cudaMemcpy failed! %s.\n", cudaGetErrorString(cudaStatus));
 			exit(0);
@@ -96,7 +118,8 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 		}
 #endif
 		// 1. weight the projection
-		weightProjection << <gridSizeWProj, blockSizeWProj >> > (mImagingSystemInfo, d_mReconInfoData);
+		//weightProjection << <gridSizeWProj, blockSizeWProj >> > (mImagingSystemInfo, d_mReconInfoData);
+		weightProjection << <gridSizeFProj, blockSizeFProj >> > (mImagingSystemInfo, d_mReconInfoData);
 
 		cudaStatus = cudaGetLastError();
 		if (cudaStatus != cudaSuccess) {
@@ -109,16 +132,18 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 		}
 
 #if 0
-		cudaStatus = cudaMemcpy(h_mReconInfoData.weightProj, d_mReconInfoData.weightProj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+		
+		//cudaStatus = cudaMemcpy(h_mReconInfoData.weightProj, d_mReconInfoData.weightProj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+		cudaStatus = cudaMemcpy(h_mReconInfoData.weightProj, d_mReconInfoData.weightProj, mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "Variable d_mReconInfoData.proj cudaMemcpy failed! %s.\n", cudaGetErrorString(cudaStatus));
 			exit(0);
 		}
 
-		for (size_t j = 0; j < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV; j++)
+		/*for (size_t j = 0; j < mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV; j++)
 		{
 			std::cout << h_mReconInfoData.weightProj[j].x << " ";
-		}
+		}*/
 #endif
 
 
@@ -134,14 +159,14 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 			exit(0);
 		}
 
-		for (int j = 0; j < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV; j++)
+		/*for (int j = 0; j < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV; j++)
 		{
 			std::cout << h_mReconInfoData.weightProj[j].x << " + " << h_mReconInfoData.weightProj[j].y << " i" << "  ";
-		}
+		}*/
 #endif
 
 		// 频域中投影数据滤波
-		projectionFilterInTDF << <gridSizeWProj, blockSizeWProj >> > (mImagingSystemInfo, d_mReconInfoData);
+		projectionFilterInTDF << <gridSizeFProj, blockSizeFProj >> > (mImagingSystemInfo, d_mReconInfoData);
 
 		cudaStatus = cudaGetLastError();
 		if (cudaStatus != cudaSuccess) {
@@ -161,10 +186,10 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 			exit(0);
 		}
 
-		for (int j = 0; j < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV; j++)
+		/*for (int j = 0; j < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV; j++)
 		{
 			std::cout << h_mReconInfoData.weightProj[j].x << " + " << h_mReconInfoData.weightProj[j].y << " i" << "  ";
-		}
+		}*/
 #endif
 
 		// 投影数据IFFT
@@ -238,7 +263,7 @@ void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoDa
 	std::cout << "重建完成！" << std::endl;
 	
 
-
+	DELETENEW(h_mReconInfoData.proj);
 
 	CUDAFREE(d_mReconInfoData.detU);
 	CUDAFREE(d_mReconInfoData.detV);
@@ -326,21 +351,27 @@ void filterFT(ImagingSystemInfo mImagingSystemInfo, ReconInfoData& h_mReconInfoD
 {
 	cudaError_t cudaStatus;
 
-	cudaStatus = cudaMalloc(&d_mReconInfoData.filter, mImagingSystemInfo.dNumU * sizeof(cufftComplex));
+	//cudaStatus = cudaMalloc(&d_mReconInfoData.filter, mImagingSystemInfo.dNumU * sizeof(cufftComplex));
+	cudaStatus = cudaMalloc(&d_mReconInfoData.filter, mImagingSystemInfo.dNumUPaddingZero * sizeof(cufftComplex));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "Variable d_mReconInfoData.filter cudaMalloc failed!");
 	}
 
-	cudaStatus = cudaMemcpy(d_mReconInfoData.filter, h_mReconInfoData.filter, mImagingSystemInfo.dNumU * sizeof(cufftComplex), cudaMemcpyHostToDevice);
+	//cudaStatus = cudaMemcpy(d_mReconInfoData.filter, h_mReconInfoData.filter, mImagingSystemInfo.dNumU * sizeof(cufftComplex), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(d_mReconInfoData.filter, h_mReconInfoData.filter, mImagingSystemInfo.dNumUPaddingZero * sizeof(cufftComplex), cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "variable d_mReconInfoData.filter cudaMemcpy failed!");
 	}
+
 	// 滤波器FFT
 	cufftHandle planFilter;                           // Create cuda library function handle
-	cufftPlan1d(&planFilter, mImagingSystemInfo.dNumU, CUFFT_C2C, 1);    // Plan declaration
+	//cufftPlan1d(&planFilter, mImagingSystemInfo.dNumU, CUFFT_C2C, 1);    // Plan declaration
+	cufftPlan1d(&planFilter, mImagingSystemInfo.dNumUPaddingZero, CUFFT_C2C, 1);    // Plan declaration
 	cufftExecC2C(planFilter, (cufftComplex*)d_mReconInfoData.filter, (cufftComplex*)d_mReconInfoData.filter, CUFFT_FORWARD);  //execute FFT
-	// 取模
-	filterAmplitude << <mImagingSystemInfo.dNumU / 1024 + 1, 1024 >> > (d_mReconInfoData.filter, mImagingSystemInfo.dNumU);
+	
+																															  // 取模
+	//filterAmplitude << <mImagingSystemInfo.dNumU / 1024 + 1, 1024 >> > (d_mReconInfoData.filter, mImagingSystemInfo.dNumU);
+	filterAmplitude << <(mImagingSystemInfo.dNumUPaddingZero-1) / 1024 + 1, 1024 >> > (d_mReconInfoData.filter, mImagingSystemInfo.dNumUPaddingZero);
 
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
@@ -401,18 +432,25 @@ void prepareReconVariables(ImagingSystemInfo mImagingSystemInfo, ReconInfoData& 
 	}
 
 	// 提取每个角度投影所需变量
-	cudaStatus = cudaMalloc(&d_mReconInfoData.proj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(float));
+	//cudaStatus = cudaMalloc(&d_mReconInfoData.proj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(float));
+	cudaStatus = cudaMalloc(&d_mReconInfoData.proj, mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "Variable d_mReconInfoData.proj cudaMalloc failed!");
 	}
 
-	// 加权所需投影
-	cudaStatus = cudaMalloc(&d_mReconInfoData.weightProj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(cufftComplex));
+	// 加权投影所需变量
+	//cudaStatus = cudaMalloc(&d_mReconInfoData.weightProj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(cufftComplex));
+	cudaStatus = cudaMalloc(&d_mReconInfoData.weightProj, mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV * sizeof(cufftComplex));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "Variable d_mReconInfoData.weightProj cudaMalloc failed!");
 	}
 
-	// 滤波所需变量
+	// 查看weightProj中的数值
+	//cufftComplex* temp = new cufftComplex[mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV];
+	//cudaMemcpy(temp, d_mReconInfoData.weightProj, mImagingSystemInfo.dNumUPaddingZero * mImagingSystemInfo.dNumV * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+	
+
+	// 滤波后的投影所需变量
 	cudaStatus = cudaMalloc(&d_mReconInfoData.filterProj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * sizeof(float));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "Variable d_mReconInfoData.filterProj cudaMalloc failed!");
@@ -522,8 +560,22 @@ __global__ void weightProjection(ImagingSystemInfo mImagingSystemInfo, ReconInfo
 	size_t z = blockIdx.y * blockDim.y + threadIdx.y;
 	if (y < mImagingSystemInfo.dNumU && z < mImagingSystemInfo.dNumV)
 	{
-		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].x = d_mReconInfoData.proj[z * mImagingSystemInfo.dNumU + y] * mImagingSystemInfo.sdd / sqrtf(powf(d_mReconInfoData.detU[y], 2) + powf(d_mReconInfoData.detV[z], 2) + powf(mImagingSystemInfo.sdd, 2));
-		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].y = 0;
+		/*d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].x = d_mReconInfoData.proj[z * mImagingSystemInfo.dNumU + y] * mImagingSystemInfo.sdd / sqrtf(powf(d_mReconInfoData.detU[y], 2) + powf(d_mReconInfoData.detV[z], 2) + powf(mImagingSystemInfo.sdd, 2));
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].y = 0;*/
+
+		// bug处，需设置为每次开始前保证补零位全部是0
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].x = d_mReconInfoData.proj[z * mImagingSystemInfo.dNumUPaddingZero + y] * mImagingSystemInfo.sdd / sqrtf(powf(d_mReconInfoData.detU[y], 2) + powf(d_mReconInfoData.detV[z], 2) + powf(mImagingSystemInfo.sdd, 2));
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].y = 0;
+	}
+
+	else if (mImagingSystemInfo.dNumU <= y < mImagingSystemInfo.dNumUPaddingZero&& z < mImagingSystemInfo.dNumV)
+	{
+		/*d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].x = d_mReconInfoData.proj[z * mImagingSystemInfo.dNumU + y] * mImagingSystemInfo.sdd / sqrtf(powf(d_mReconInfoData.detU[y], 2) + powf(d_mReconInfoData.detV[z], 2) + powf(mImagingSystemInfo.sdd, 2));
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].y = 0;*/
+
+		// bug处，需设置为每次开始前保证补零位全部是0
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].x = 0;// d_mReconInfoData.proj[z * mImagingSystemInfo.dNumUPaddingZero + y] * mImagingSystemInfo.sdd / sqrtf(powf(d_mReconInfoData.detU[y], 2) + powf(d_mReconInfoData.detV[z], 2) + powf(mImagingSystemInfo.sdd, 2));
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].y = 0;
 	}
 }
 
@@ -531,10 +583,16 @@ __global__ void projectionFilterInTDF(ImagingSystemInfo mImagingSystemInfo, Reco
 {
 	size_t y = threadIdx.x + blockIdx.x * blockDim.x;
 	size_t z = threadIdx.y + blockIdx.y * blockDim.y;
-	if (y < mImagingSystemInfo.dNumU && z < mImagingSystemInfo.dNumV)
+	//if (y < mImagingSystemInfo.dNumU && z < mImagingSystemInfo.dNumV)
+	if (y < mImagingSystemInfo.dNumUPaddingZero && z < mImagingSystemInfo.dNumV)
 	{
-		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].x = d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].x * d_mReconInfoData.filter[y].x;
-		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].y = d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].y * d_mReconInfoData.filter[y].x;
+		//d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].x = d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].x * d_mReconInfoData.filter[y].x;
+		//d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].y = d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumU + y].y * d_mReconInfoData.filter[y].x;
+	
+		// 修改为补零后情况
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].x = d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].x * d_mReconInfoData.filter[y].x;
+		d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].y = d_mReconInfoData.weightProj[z * mImagingSystemInfo.dNumUPaddingZero + y].y * d_mReconInfoData.filter[y].x;
+
 	}
 }
 
@@ -545,7 +603,9 @@ __global__ void processFilteredProjIfft(ImagingSystemInfo mImagingSystemInfo, Re
 
 	if (x < mImagingSystemInfo.dNumU && y < mImagingSystemInfo.dNumV)
 	{
-		d_mReconInfoData.filterProj[y * mImagingSystemInfo.dNumU + x] = d_mReconInfoData.weightProj[y * mImagingSystemInfo.dNumU + x].x / mImagingSystemInfo.dNumU;
+		//d_mReconInfoData.filterProj[y * mImagingSystemInfo.dNumU + x] = d_mReconInfoData.weightProj[y * mImagingSystemInfo.dNumU + x].x / mImagingSystemInfo.dNumU;
+		d_mReconInfoData.filterProj[y * mImagingSystemInfo.dNumU + x] = d_mReconInfoData.weightProj[y * mImagingSystemInfo.dNumUPaddingZero + x].x / mImagingSystemInfo.dNumUPaddingZero;
+
 	}
 }
 
@@ -580,7 +640,10 @@ __global__ void reconstructeImage(float angle, cudaTextureObject_t texProj, Imag
 		// 《医学断层图像重建仿真实验_黄力宇 朱守平 匡涛》中公式 后面乘的角度间隔是分析加的
 		d_mReconInfoData.imageRecon[z * mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY + y * mImagingSystemInfo.pNumX + x] += 1 / 2.0f * (mImagingSystemInfo.sod * mImagingSystemInfo.sod) / ((mImagingSystemInfo.sod + tImgX) * (mImagingSystemInfo.sod + tImgX)) * tex2D<float>(texProj, correctedU + 0.5, correctedV + 0.5) * mImagingSystemInfo.thetaStep;// / mImagingSystemInfo.imgReconLenX; // (mImagingSystemInfo.pNumX * mImagingSystemInfo.pSizeX);
 
-																																																																																					   // 考虑纹理插值时，是否需要加0.5   ????		
+		// 《_曾更生》中公式 后面乘的角度间隔是分析加的
+		//d_mReconInfoData.imageRecon[z * mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY + y * mImagingSystemInfo.pNumX + x] += 1 / 2.0f * (mImagingSystemInfo.sod /** mImagingSystemInfo.sod*/) / ((mImagingSystemInfo.sod + tImgX) /** (mImagingSystemInfo.sod + tImgX)*/) * tex2D<float>(texProj, correctedU + 0.5, correctedV + 0.5) * mImagingSystemInfo.thetaStep;// / mImagingSystemInfo.imgReconLenX; // (mImagingSystemInfo.pNumX * mImagingSystemInfo.pSizeX);
+
+																																																																																		   // 考虑纹理插值时，是否需要加0.5   ????		
 		/*imgRec[z * width * height + y * width + x] += ((sod * sdd) / pow((sod + imgX[x] * sinf(angle) - imgY[y] * cosf(angle)), 2))
 			* tex3D<float>(texProj, u, v, num + 0.5) / width;*/
 			// u, v应该除以dSize，目前dSize是1, 后期需要测试除以dSize

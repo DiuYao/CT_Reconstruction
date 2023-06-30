@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <cmath>
 
 using namespace std;
 
@@ -15,8 +16,8 @@ CBCTFDKRecon::CBCTFDKRecon()
 	h_mReconInfoData.x = new float[mImagingSystemInfo.pNumX];
 	h_mReconInfoData.y = new float[mImagingSystemInfo.pNumY];
 	h_mReconInfoData.z = new float[mImagingSystemInfo.pNumZ];
-	h_mReconInfoData.proj = new float[mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV];
-	h_mReconInfoData.weightProj = new cufftComplex[mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV];
+	//h_mReconInfoData.proj = new float[mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV];
+	//h_mReconInfoData.weightProj = new cufftComplex[mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV];
 	h_mReconInfoData.filterProj = new float[mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV];
 	h_mReconInfoData.totalProj = new float[mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * mImagingSystemInfo.views];
 
@@ -282,6 +283,7 @@ void CBCTFDKRecon::computeParas()
 	/*mImagingSystemInfo.pSizeX = 2 * mImagingSystemInfo.horizontalR / mImagingSystemInfo.pNumX;
 	mImagingSystemInfo.pSizeY = 2 * mImagingSystemInfo.horizontalR / mImagingSystemInfo.pNumY;
 	mImagingSystemInfo.pSizeZ = 2 * mImagingSystemInfo.verticalR / mImagingSystemInfo.pNumZ;*/
+
 	mImagingSystemInfo.pSizeX = mImagingSystemInfo.imgReconLenX / mImagingSystemInfo.pNumX;
 	mImagingSystemInfo.pSizeY = mImagingSystemInfo.imgReconLenY / mImagingSystemInfo.pNumY;
 	mImagingSystemInfo.pSizeZ = mImagingSystemInfo.imgReconLenZ / mImagingSystemInfo.pNumZ;
@@ -290,6 +292,10 @@ void CBCTFDKRecon::computeParas()
 	mImagingSystemInfo.dx = 0.5 * mImagingSystemInfo.pSizeX;
 	mImagingSystemInfo.dy = 0.5 * mImagingSystemInfo.pSizeY;
 	mImagingSystemInfo.dz = 0.5 * mImagingSystemInfo.pSizeZ;
+
+	// FFT前补零后的数据长度
+	mImagingSystemInfo.dNumUPaddingZero = powf(2, ceilf(log2f(mImagingSystemInfo.dNumU)));
+
 	// Compute detector coordinates
 	mImagingSystemInfo.intNum = roundf(2 * mImagingSystemInfo.horizontalR / mImagingSystemInfo.dx);        // 某条射线上的积分点个数,X方向
 }
@@ -297,7 +303,8 @@ void CBCTFDKRecon::computeParas()
 // 设计滤波器
 void CBCTFDKRecon::designFilter()
 {
-	h_mReconInfoData.filter = new cufftComplex[mImagingSystemInfo.dNumU]();
+	//h_mReconInfoData.filter = new cufftComplex[mImagingSystemInfo.dNumU]();
+	h_mReconInfoData.filter = new cufftComplex[mImagingSystemInfo.dNumUPaddingZero]();   // 初始化为全零
 
 	int dHalf = mImagingSystemInfo.dNumU / 2;
 	for (int i = 0; i < mImagingSystemInfo.dNumU; i++)
@@ -315,6 +322,7 @@ void CBCTFDKRecon::designFilter()
 	}
 	//h_mReconInfoData.filter[dHalf].x = (float)1 / (4 * mImagingSystemInfo.dSize * mImagingSystemInfo.dSize);
 	h_mReconInfoData.filter[dHalf].x = (float)1 / 4;
+
 
 }
 
