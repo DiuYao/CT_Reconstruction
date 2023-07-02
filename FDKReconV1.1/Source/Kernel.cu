@@ -621,13 +621,25 @@ __global__ void reconstructeImage(float angle, cudaTextureObject_t texProj, Imag
 		float tImgX = d_mReconInfoData.x[x] * cosf(angle) - d_mReconInfoData.y[y] * sinf(angle);
 		float tImgY = d_mReconInfoData.y[x] * sinf(angle) + d_mReconInfoData.y[y] * cosf(angle);
 
+		//// 像素点坐标对应于探测器上的坐标
+		//float u = mImagingSystemInfo.sdd * tImgY / (mImagingSystemInfo.sod + tImgX); //+ dHalfY) / dSize;
+		//float v = mImagingSystemInfo.sdd * d_mReconInfoData.z[z] / (mImagingSystemInfo.sod + tImgX); //+ dHalfZ) / dSize;
+		//
+		//// 此处计算出的探测器坐标是以右手系为基准的，也是为了物体顶部在上端。 此时旋转校正时，正角度是逆时针。
+		//float correctedU = (u * cosf(mGeometryPara.beta) - v * sinf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLU) / mImagingSystemInfo.dSize + mGeometryPara.offSetDetecW;    // offsetW指探测器的U(X)方向，
+		//float correctedV = (u * sinf(mGeometryPara.beta) + v * cosf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLV) / mImagingSystemInfo.dSize + mGeometryPara.offSetDetecH;
+
+
+		// 修改为先偏移再旋转
 		// 像素点坐标对应于探测器上的坐标
-		float u = mImagingSystemInfo.sdd * tImgY / (mImagingSystemInfo.sod + tImgX); //+ dHalfY) / dSize;
-		float v = mImagingSystemInfo.sdd * d_mReconInfoData.z[z] / (mImagingSystemInfo.sod + tImgX); //+ dHalfZ) / dSize;
-		
+		float u = mImagingSystemInfo.sdd * tImgY / (mImagingSystemInfo.sod + tImgX) + mGeometryPara.offSetDetecW * mImagingSystemInfo.dSize;   // offsetW指探测器的U(X)方向
+		float v = mImagingSystemInfo.sdd * d_mReconInfoData.z[z] / (mImagingSystemInfo.sod + tImgX) + +mGeometryPara.offSetDetecH * mImagingSystemInfo.dSize;
+
 		// 此处计算出的探测器坐标是以右手系为基准的，也是为了物体顶部在上端。 此时旋转校正时，正角度是逆时针。
-		float correctedU = (u * cosf(mGeometryPara.beta) - v * sinf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLU) / mImagingSystemInfo.dSize + mGeometryPara.offSetDetecW;    // offsetW指探测器的U(X)方向，
-		float correctedV = (u * sinf(mGeometryPara.beta) + v * cosf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLV) / mImagingSystemInfo.dSize + mGeometryPara.offSetDetecH;
+		float correctedU = (u * cosf(mGeometryPara.beta) - v * sinf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLU) / mImagingSystemInfo.dSize;    
+		float correctedV = (u * sinf(mGeometryPara.beta) + v * cosf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLV) / mImagingSystemInfo.dSize;
+
+
 
 		//imgRec[z * width * height + y * width + x] = v / pSizeY;
 

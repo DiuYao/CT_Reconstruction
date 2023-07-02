@@ -163,7 +163,7 @@ void CBCTFDKRecon::getReconConfig()
 	tmpInitFile.GetEntryValue(section, "OffsetW", -100, mGeometryPara.offSetDetecW);
 	tmpInitFile.GetEntryValue(section, "OffsetH", -100, mGeometryPara.offSetDetecH);
 	tmpInitFile.GetEntryValue(section, "Beta", -100, mGeometryPara.beta);
-
+	mGeometryPara.beta = mGeometryPara.beta / 180 * PI;  // 换位弧度，后续使用是弧度
 	if (mImagingSystemInfo.dNumU < 0 || mImagingSystemInfo.dNumV < 0 || mImagingSystemInfo.dSize < 0)
 	{
 		cout << "几何参数读取有误！" << endl;
@@ -227,6 +227,16 @@ void CBCTFDKRecon::readProj()
 	ifs.read((char*)h_mReconInfoData.totalProj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * mImagingSystemInfo.views * sizeof(float));
 
 	std::cout << "投影数据读取完成！" << std::endl;
+
+
+	for (int i = 0; i < mImagingSystemInfo.dHalfLU * mImagingSystemInfo.dHalfLV * mImagingSystemInfo.views; ++i)
+	{
+		if (h_mReconInfoData.totalProj[i] < 0)
+		{
+			h_mReconInfoData.totalProj[i] = 0;
+		}
+	}
+
 }
 
 void CBCTFDKRecon::saveAsImage()
