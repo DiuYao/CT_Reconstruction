@@ -12,6 +12,7 @@ using namespace std;
 CBCTFDKRecon::CBCTFDKRecon()
 {
 	getReconConfig();
+
 	h_mReconInfoData.imageRecon = new float[mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY * mImagingSystemInfo.pNumZ];
 	h_mReconInfoData.x = new float[mImagingSystemInfo.pNumX];
 	h_mReconInfoData.y = new float[mImagingSystemInfo.pNumY];
@@ -64,7 +65,11 @@ void CBCTFDKRecon::recon()
 
 	std::cout << "处理重建图像..." << std::endl;
 	// 负值置0
-	negativeValueToZero();
+	if (mImagingSystemInfo.reconZeroFlag == 1)
+	{
+		negativeValueToZero();
+	}
+	
 	// 负值置0，并归一化
 	//normalizeDataOptimize();
 	cout << "处理重建图像结束" << endl;
@@ -189,6 +194,28 @@ void CBCTFDKRecon::getReconConfig()
 	tmpInitFile.GetEntryValue(section, "WriteFilterProjPath", "null", mFilrePath.writeFilterProjPath);
 
 
+	// 读取 投影负值置零标识和重建图像负值置零表示
+	tmpInitFile.GetEntryValue(section, "IsProjZero", -1, mImagingSystemInfo.projZeroFlag);
+	tmpInitFile.GetEntryValue(section, "IsReconZero", -1, mImagingSystemInfo.reconZeroFlag);
+
+	if (mImagingSystemInfo.projZeroFlag == -1 || mImagingSystemInfo.reconZeroFlag == -1)
+	{
+		cout << "置零标识读取有误！" << endl;
+		system("pause");
+		exit(0);
+		return;
+	}
+
+	// 读取使用的GPU序号
+	tmpInitFile.GetEntryValue(section, "GPUIndex", -1, mImagingSystemInfo.deviceIndex);
+	
+	if (mImagingSystemInfo.deviceIndex == -1)
+	{
+		cout << "GPU序号读取有误！" << endl;
+		system("pause");
+		exit(0);
+		return;
+	}
 
 #if _DEBUG
 	cout << "pNumX = " << mImagingSystemInfo.pNumX << endl;
@@ -201,6 +228,10 @@ void CBCTFDKRecon::getReconConfig()
 	cout << "offsetW = " << mGeometryPara.offSetDetecW << endl;
 	cout << "offsetH = " << mGeometryPara.offSetDetecH << endl;
 	cout << "beta = " << mGeometryPara.beta << endl;
+
+	cout << "projZeroFlag = " << mImagingSystemInfo.projZeroFlag << endl;
+	cout << "reconZeroFlag = " << mImagingSystemInfo.reconZeroFlag << endl;
+	cout << "deviceIndex = " << mImagingSystemInfo.deviceIndex << endl;
 
 	cout << "readProjPath = " << mFilrePath.readProjPath << endl;
 	cout << "writeReconPath = " << mFilrePath.readAnglePath << endl;
@@ -228,14 +259,18 @@ void CBCTFDKRecon::readProj()
 
 	std::cout << "投影数据读取完成！" << std::endl;
 
-
-	for (int i = 0; i < mImagingSystemInfo.dHalfLU * mImagingSystemInfo.dHalfLV * mImagingSystemInfo.views; ++i)
+	// sino图中负值置0
+	if (mImagingSystemInfo.projZeroFlag == 1)
 	{
-		if (h_mReconInfoData.totalProj[i] < 0)
+		for (size_t i = 0; i < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * mImagingSystemInfo.views; ++i)
 		{
-			h_mReconInfoData.totalProj[i] = 0;
+			if (h_mReconInfoData.totalProj[i] < 0)
+			{
+				h_mReconInfoData.totalProj[i] = 0;
+			}
 		}
 	}
+	
 
 }
 

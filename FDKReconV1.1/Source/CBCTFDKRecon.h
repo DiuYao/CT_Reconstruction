@@ -69,6 +69,11 @@ struct ImagingSystemInfo
 	size_t intNum;        // 某条射线上的积分点个数
 
 	int RotatedDirection;  // 扫描时的旋转方向
+
+	int projZeroFlag;      // Set negative values of proj to zero
+	int reconZeroFlag;     // Set negative values of recon to zero
+	
+	short deviceIndex;
 };
 
 struct GeometryPara

@@ -5,7 +5,7 @@
 
 void reconGPU(ImagingSystemInfo mImagingSystemInfo, ReconInfoData h_mReconInfoData, ReconInfoData d_mReconInfoData, GeometryPara mGeometryPara)
 {
-	//chooseGPU(0);
+	chooseGPU(mImagingSystemInfo.deviceIndex);
 	cudaError_t cudaStatus;
 	
 	computeDetectorPoints(mImagingSystemInfo, d_mReconInfoData);
@@ -633,7 +633,7 @@ __global__ void reconstructeImage(float angle, cudaTextureObject_t texProj, Imag
 		// 修改为先偏移再旋转
 		// 像素点坐标对应于探测器上的坐标
 		float u = mImagingSystemInfo.sdd * tImgY / (mImagingSystemInfo.sod + tImgX) + mGeometryPara.offSetDetecW * mImagingSystemInfo.dSize;   // offsetW指探测器的U(X)方向
-		float v = mImagingSystemInfo.sdd * d_mReconInfoData.z[z] / (mImagingSystemInfo.sod + tImgX) + +mGeometryPara.offSetDetecH * mImagingSystemInfo.dSize;
+		float v = mImagingSystemInfo.sdd * d_mReconInfoData.z[z] / (mImagingSystemInfo.sod + tImgX) + mGeometryPara.offSetDetecH * mImagingSystemInfo.dSize;
 
 		// 此处计算出的探测器坐标是以右手系为基准的，也是为了物体顶部在上端。 此时旋转校正时，正角度是逆时针。
 		float correctedU = (u * cosf(mGeometryPara.beta) - v * sinf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLU) / mImagingSystemInfo.dSize;    
