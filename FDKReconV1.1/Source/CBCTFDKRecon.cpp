@@ -63,7 +63,7 @@ void CBCTFDKRecon::recon()
 	
 	reconGPU(mImagingSystemInfo, h_mReconInfoData, d_mReconInfoData, mGeometryPara);
 
-	std::cout << "处理重建图像..." << std::endl;
+	std::cout << "处理重建图像==>>" << std::endl;
 	// 负值置0
 	if (mImagingSystemInfo.reconZeroFlag == 1)
 	{
@@ -75,7 +75,9 @@ void CBCTFDKRecon::recon()
 	cout << "处理重建图像结束" << endl;
 
 	saveAsImage();
-	cout << "图像存储完成" << endl;
+	cout << endl << "图像存储完成" << endl;
+
+	saveReconInfo();
 
 #if 0
 	for (int i = 0; i < mImagingSystemInfo.dNumU; i++)
@@ -179,10 +181,11 @@ void CBCTFDKRecon::getReconConfig()
 
 
 
-	tmpInitFile.GetEntryValue(section, "ReadProjPath", "null", mFilrePath.readProjPath);
+	tmpInitFile.GetEntryValue(section, "CTDataFolder", "null", mFilrePath.CTDataFolder);
+	tmpInitFile.GetEntryValue(section, "ProjName", "null", mFilrePath.projName);
 	tmpInitFile.GetEntryValue(section, "ReadAnglePath", "null", mFilrePath.readAnglePath);
 
-	if (mFilrePath.readProjPath == "null" || mFilrePath.readAnglePath == "null")
+	if (mFilrePath.CTDataFolder == "null" || mFilrePath.projName == "null" || mFilrePath.readAnglePath == "null")
 	{
 		cout << "路径读取有误！" << endl;
 		system("pause");
@@ -190,21 +193,39 @@ void CBCTFDKRecon::getReconConfig()
 		return;
 	}
 
-	tmpInitFile.GetEntryValue(section, "WriteReconPath", "null", mFilrePath.writeReconPath);
-	tmpInitFile.GetEntryValue(section, "WriteFilterProjPath", "null", mFilrePath.writeFilterProjPath);
+	tmpInitFile.GetEntryValue(section, "ReconName", "null", mFilrePath.reconName);
+	//tmpInitFile.GetEntryValue(section, "WriteFilterProjPath", "null", mFilrePath.writeFilterProjPath);
+	if (mFilrePath.reconName == "null") //|| mFilrePath.writeFilterProjPath == "null")
+	{
+		cout << "输出路径读取有误！" << endl;
+		system("pause");
+		exit(0);
+		return;
+	}
 
-
-	// 读取 投影负值置零标识和重建图像负值置零表示
+	// 读取 投影负值置零标识和重建图像负值置零标识
 	tmpInitFile.GetEntryValue(section, "IsProjZero", -1, mImagingSystemInfo.projZeroFlag);
 	tmpInitFile.GetEntryValue(section, "IsReconZero", -1, mImagingSystemInfo.reconZeroFlag);
 
 	if (mImagingSystemInfo.projZeroFlag == -1 || mImagingSystemInfo.reconZeroFlag == -1)
 	{
-		cout << "置零标识读取有误！" << endl;
+		cout << "投影或重建置零标识读取有误！" << endl;
 		system("pause");
 		exit(0);
 		return;
 	}
+
+	// 读取 投影滤波后是否保存的标识
+	tmpInitFile.GetEntryValue(section, "IsFilteredPorjSaving", -1, mImagingSystemInfo.filteredPorjSaveFalg);
+
+	if (mImagingSystemInfo.filteredPorjSaveFalg == -1)
+	{
+		cout << "滤波后的投影的保存标识读取有误！" << endl;
+		system("pause");
+		exit(0);
+		return;
+	}
+
 
 	// 读取使用的GPU序号
 	tmpInitFile.GetEntryValue(section, "GPUIndex", -1, mImagingSystemInfo.deviceIndex);
@@ -233,22 +254,84 @@ void CBCTFDKRecon::getReconConfig()
 	cout << "reconZeroFlag = " << mImagingSystemInfo.reconZeroFlag << endl;
 	cout << "deviceIndex = " << mImagingSystemInfo.deviceIndex << endl;
 
-	cout << "readProjPath = " << mFilrePath.readProjPath << endl;
-	cout << "writeReconPath = " << mFilrePath.readAnglePath << endl;
-	cout << "writeReconPath = " << mFilrePath.writeReconPath << endl;
-	cout << "writeReconPath = " << mFilrePath.writeFilterProjPath << endl;
+	cout << "readProjPath = " << mFilrePath.CTDataFolder << endl;
+	cout << "readAnglePath = " << mFilrePath.readAnglePath << endl;
+	cout << "reconName = " << mFilrePath.reconName << endl;
+	cout << "writeFilterProjPath = " << mFilrePath.writeFilterProjPath << endl;
 
 	printf("Find %d mode->Select Mode1\n", ModeNum);
 
 #endif // INI
 }
 
+void CBCTFDKRecon::saveReconInfo()
+{
+	
+
+	//string Workdir;
+	CInitFile tmpInitFile;
+
+	string modename = mFilrePath.reconFolder + "\\Reconstruct.ini";
+
+	if (_access(modename.c_str(), 0) == 0)
+	{
+		remove(modename.c_str());
+	}
+
+	tmpInitFile.SaveFile(modename.c_str());
+	tmpInitFile.GetFileName(modename.c_str());  // 存在问题：保存结果第一行多了[]
+	
+
+	char section[32] = "Recon";
+
+	tmpInitFile.SetEntryValue(section, "RotatedDerection", mImagingSystemInfo.RotatedDirection);
+	// 读取 投影负值置零标识和重建图像负值置零标识
+	tmpInitFile.SetEntryValue(section, "IsProjZero", mImagingSystemInfo.projZeroFlag);
+	tmpInitFile.SetEntryValue(section, "IsReconZero", mImagingSystemInfo.reconZeroFlag);
+
+	tmpInitFile.SetEntryValue(section, "PNumX", mImagingSystemInfo.pNumX);
+	tmpInitFile.SetEntryValue(section, "PNumY", mImagingSystemInfo.pNumY);
+	tmpInitFile.SetEntryValue(section, "PNumZ", mImagingSystemInfo.pNumZ);
+
+	tmpInitFile.SetEntryValue(section, "ImgReconLenX", mImagingSystemInfo.imgReconLenX);
+	tmpInitFile.SetEntryValue(section, "ImgReconLenY", mImagingSystemInfo.imgReconLenY);
+	tmpInitFile.SetEntryValue(section, "ImgReconLenY", mImagingSystemInfo.imgReconLenZ);
+
+
+	tmpInitFile.SetEntryValue(section, "SOD", mImagingSystemInfo.sod);
+	tmpInitFile.SetEntryValue(section, "SDD", mImagingSystemInfo.sdd);
+	tmpInitFile.SetEntryValue(section, "Views", mImagingSystemInfo.views);
+
+	tmpInitFile.SetEntryValue(section, "DNumU", mImagingSystemInfo.dNumU);
+	tmpInitFile.SetEntryValue(section, "DNumV", mImagingSystemInfo.dNumV);
+	tmpInitFile.SetEntryValue(section, "DSize", mImagingSystemInfo.dSize);
+
+	tmpInitFile.SetEntryValue(section, "OffsetW", mGeometryPara.offSetDetecW);
+	tmpInitFile.SetEntryValue(section, "OffsetH", mGeometryPara.offSetDetecH);
+
+	mGeometryPara.beta = mGeometryPara.beta / PI * 180;  // 换为角度制
+	tmpInitFile.SetEntryValue(section, "Beta", mGeometryPara.beta);
+
+
+	tmpInitFile.SetEntryValue(section, "CTDataFolder", mFilrePath.CTDataFolder);
+	tmpInitFile.SetEntryValue(section, "ProjName", mFilrePath.projName);
+
+	mFilrePath.reconName += "_" + to_string(mImagingSystemInfo.pNumX) + 'x' + to_string(mImagingSystemInfo.pNumY) + 'x' + to_string(mImagingSystemInfo.pNumZ) + "_float.raw";
+	tmpInitFile.SetEntryValue(section, "ReconName", mFilrePath.reconName);
+
+	// 读取 投影滤波后是否保存的标识
+	tmpInitFile.SetEntryValue(section, "IsFilteredPorjSaving", mImagingSystemInfo.filteredPorjSaveFalg);
+
+}
+
 void CBCTFDKRecon::readProj()
 {
-	std::cout << "正在读取投影数据..." << std::endl;
+	string projPath = mFilrePath.CTDataFolder + "/" + mFilrePath.projName;
+
+	std::cout << "正在读取投影数据==>>" << std::endl;
 	
 	ifstream ifs;
-	ifs.open(mFilrePath.readProjPath, ios::in | ios::binary);
+	ifs.open(projPath, ios::in | ios::binary);
 	if (!ifs.is_open())
 	{
 		std::cout << "文件打开失败！" << std::endl;
@@ -259,7 +342,7 @@ void CBCTFDKRecon::readProj()
 
 	std::cout << "投影数据读取完成！" << std::endl;
 
-	// sino图中负值置0
+	// 投影图中负值置0
 	if (mImagingSystemInfo.projZeroFlag == 1)
 	{
 		for (size_t i = 0; i < mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * mImagingSystemInfo.views; ++i)
@@ -276,28 +359,71 @@ void CBCTFDKRecon::readProj()
 
 void CBCTFDKRecon::saveAsImage()
 {
-	std::cout << "正在保存重建图像..." << std::endl;
+	mFilrePath.reconFolder = mFilrePath.CTDataFolder + "\\Recon\\" + mFilrePath.reconName;
 
-	mFilrePath.writeReconPath += "_" + to_string(mImagingSystemInfo.pNumX) + 'x' + to_string(mImagingSystemInfo.pNumY) + 'x' + to_string(mImagingSystemInfo.pNumZ) + "_float.raw";
+	if (_access(mFilrePath.reconFolder.c_str(), 0) == -1)
+	{
+		// 删除非空文件夹未实现成功，暂且使用删除文件
+		//string command = "rd " + mFilrePath.reconFolder;
+		//system(command.c_str());
+		//remove(mFilrePath.reconFolder.c_str());
+
+		// 创建文件夹
+		string command = "mkdir " + mFilrePath.reconFolder;
+		system(command.c_str());
+	}
+
+	// 此处用"\\"是为了和读取配置文件自行处理后中使用"\\"保持一致，使用"/"也可
+	string reconPath = mFilrePath.reconFolder + "\\" + mFilrePath.reconName + "_" + to_string(mImagingSystemInfo.pNumX) + 'x' + to_string(mImagingSystemInfo.pNumY) + 'x' + to_string(mImagingSystemInfo.pNumZ) + "_float.raw";
+
+	if (_access(reconPath.c_str(), 0) == 0)
+	{
+		remove(reconPath.c_str());
+	}
+	
+
+	// 保存
+	std::cout << "正在保存重建图像==>>" << std::endl;
+
 	ofstream ofs;
-	ofs.open(mFilrePath.writeReconPath, ios::out | ios::binary);
+	ofs.open(reconPath, ios::out | ios::binary);
 	ofs.write((const char*)h_mReconInfoData.imageRecon, mImagingSystemInfo.pNumX * mImagingSystemInfo.pNumY * mImagingSystemInfo.pNumZ * sizeof(float));
 	ofs.close();
 
-	std::cout << "重建图像保存完成!" << std::endl;
+	std::cout << "重建图像保存完成" << std::endl;
 
 
-	std::cout << "是否需要保存滤波后的投影(0-N0, 1-Yes)：";
-	int index = 0;
-	cin >> index;
-	if (index)
+	// 滤波后的投影保存
+	
+	if (mImagingSystemInfo.filteredPorjSaveFalg)
 	{
-		mFilrePath.writeFilterProjPath += "_" + to_string(mImagingSystemInfo.dNumU) + 'x' + to_string(mImagingSystemInfo.dNumV) + 'x' + to_string(mImagingSystemInfo.views) + "_float.raw";
-		ofs.open(mFilrePath.writeFilterProjPath, ios::out | ios::binary);
+		string filterProjFolder = mFilrePath.CTDataFolder + "\\FilteredProj";
+
+		if (_access(filterProjFolder.c_str(), 0) == -1)
+		{
+			// 创建文件夹
+			string command = "mkdir " + filterProjFolder;
+			system(command.c_str());
+		}
+		
+		string filterProjPath = filterProjFolder + "/" + "FilteredProj_" + to_string(mImagingSystemInfo.dNumU) + 'x' + to_string(mImagingSystemInfo.dNumV) + 'x' + to_string(mImagingSystemInfo.views) + "_float.raw";
+
+		if (_access(reconPath.c_str(), 0) == 0)
+		{
+			remove(filterProjPath.c_str());
+		}
+
+		cout << endl << "正在保存滤波后的投影==>>" << endl;
+
+		ofs.open(filterProjPath, ios::out | ios::binary);
 		ofs.write((const char*)h_mReconInfoData.totalProj, mImagingSystemInfo.dNumU * mImagingSystemInfo.dNumV * mImagingSystemInfo.views * sizeof(float));
 		ofs.close();
 
-		std::cout << "滤波后的投影保存完成！" << std::endl;
+		std::cout << "滤波后的投影保存完成" << std::endl;
+	}
+	else
+	{
+		cout << endl << "不保存滤波后的投影" << endl;
 	}
 }
 

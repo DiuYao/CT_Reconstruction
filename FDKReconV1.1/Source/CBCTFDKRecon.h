@@ -16,6 +16,9 @@
 #pragma once
 
 #include <xstring>
+#include <corecrt_io.h>
+//#include <direct.h>
+//#include <Windows.h>
 
 #include "Kernel.cuh"
 
@@ -72,6 +75,7 @@ struct ImagingSystemInfo
 
 	int projZeroFlag;      // Set negative values of proj to zero
 	int reconZeroFlag;     // Set negative values of recon to zero
+	int filteredPorjSaveFalg;
 	
 	short deviceIndex;
 };
@@ -109,10 +113,13 @@ struct ReconInfoData
 struct FilePath
 {
 	
-	std::string readProjPath;
+	std::string CTDataFolder;
+	std::string projName;
 	std::string readAnglePath;
-	std::string writeReconPath;
-	std::string writeFilterProjPath;
+
+	std::string reconName;
+	std::string reconFolder;
+	//std::string writeFilterProjPath;
 };
 
 class CBCTFDKRecon
@@ -136,6 +143,8 @@ public:
 
 private:
 	void getReconConfig();
+	void saveReconInfo();
+
 	void readProj();
 	void saveAsImage();
 	void computeParas();

@@ -551,6 +551,7 @@ __global__ void computeImgCoordinates(ImagingSystemInfo mImagingSystemInfo, Reco
 		d_mReconInfoData.x[x] = -mImagingSystemInfo.imgReconLenX / 2 + mImagingSystemInfo.pSizeX / 2.0 + x * mImagingSystemInfo.pSizeX;
 		d_mReconInfoData.y[y] = -mImagingSystemInfo.imgReconLenY / 2 + mImagingSystemInfo.pSizeY / 2.0 + y * mImagingSystemInfo.pSizeY;
 		d_mReconInfoData.z[z] = -mImagingSystemInfo.imgReconLenZ / 2 + mImagingSystemInfo.pSizeZ / 2.0 + z * mImagingSystemInfo.pSizeZ;
+		// z轴坐标如此计算后，使得重建图像的第一个数据位于最底层
 	}
 }
 
@@ -638,7 +639,9 @@ __global__ void reconstructeImage(float angle, cudaTextureObject_t texProj, Imag
 		// 此处计算出的探测器坐标是以右手系为基准的，也是为了物体顶部在上端。 此时旋转校正时，正角度是逆时针。
 		float correctedU = (u * cosf(mGeometryPara.beta) - v * sinf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLU) / mImagingSystemInfo.dSize;    
 		float correctedV = (u * sinf(mGeometryPara.beta) + v * cosf(mGeometryPara.beta) + mImagingSystemInfo.dHalfLV) / mImagingSystemInfo.dSize;
-
+		// 由于前面计算的图像坐标的第一个数据在最后一层，因此 +mImagingSystemInfo.dHalfLV 将第一个数据变为了投影的第一个数据，
+		// 最后，也让重建图像第一个数据对应上了投影的第一个数据。也保证了重建图像的顶部在数据前面。
+		// 也让 +mGeometryPara.offSetDetecH 变的正确。若此处是 -dHalfLV，则之前的校正就反了。
 
 
 		//imgRec[z * width * height + y * width + x] = v / pSizeY;
